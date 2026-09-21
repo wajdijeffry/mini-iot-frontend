@@ -1,6 +1,19 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title>IoT Data Monitor</ion-title>
+<ion-header [translucent]="true" class="custom-header">
+  <ion-toolbar class="dark-toolbar">
+    <ion-title>
+      <div class="header-content">
+        <div class="header-top">
+          <span class="app-title">IoT Data Monitor</span>
+          <span class="live-badge">
+            <span class="live-dot"></span>
+            LIVE
+          </span>
+        </div>
+        <div class="header-sub" *ngIf="secondsSinceUpdate() !== null">
+          Last update {{ secondsSinceUpdate() }}s ago
+        </div>
+      </div>
+    </ion-title>
   </ion-toolbar>
 </ion-header>
 
@@ -9,34 +22,53 @@
     <ion-refresher-content></ion-refresher-content>
   </ion-refresher>
 
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">IoT Data Monitor</ion-title>
-    </ion-toolbar>
-  </ion-header>
-
-  <!-- Current readings -->
+  <!-- Sensor cards -->
   <ion-grid>
     <ion-row>
-      <ion-col size="6">
-        <ion-card *ngIf="latestTemperature()">
-          <ion-card-header>
-            <ion-card-subtitle>Temperature</ion-card-subtitle>
-            <ion-card-title>{{ latestTemperature()!.value }}°C</ion-card-title>
-          </ion-card-header>
+      <ion-col size="12" size-md="6">
+        <ion-card class="sensor-card temp-card" *ngIf="latestTemperature()">
           <ion-card-content>
-            {{ latestTemperature()!.timestamp | date:'shortTime' }}
+            <div class="sensor-card-header">
+              <ion-icon name="thermometer-outline" class="sensor-icon temp-icon"></ion-icon>
+              <span class="sensor-label">Temperature</span>
+            </div>
+            <div class="sensor-value temp-value">{{ latestTemperature()!.value }}°C</div>
+            <div class="sensor-delta" *ngIf="temperatureDelta() !== null">
+              <ion-icon [name]="temperatureDelta()! > 0 ? 'arrow-up' : (temperatureDelta()! < 0 ? 'arrow-down' : 'remove')"></ion-icon>
+              {{ temperatureDelta() }}°C from previous reading
+            </div>
+            <div class="sensor-status" [class.warning]="temperatureStatus() === 'WARNING'">
+              <span class="status-dot"></span>
+              {{ temperatureStatus() }}
+            </div>
+            <div class="sparkline">
+              <canvas baseChart [data]="temperatureSparkline()" [options]="sparklineOptions" type="line"></canvas>
+            </div>
+            <div class="sensor-time">Last updated: {{ latestTemperature()!.timestamp | date:'shortTime' }}</div>
           </ion-card-content>
         </ion-card>
       </ion-col>
-      <ion-col size="6">
-        <ion-card *ngIf="latestHumidity()">
-          <ion-card-header>
-            <ion-card-subtitle>Humidity</ion-card-subtitle>
-            <ion-card-title>{{ latestHumidity()!.value }}%</ion-card-title>
-          </ion-card-header>
+
+      <ion-col size="12" size-md="6">
+        <ion-card class="sensor-card humidity-card" *ngIf="latestHumidity()">
           <ion-card-content>
-            {{ latestHumidity()!.timestamp | date:'shortTime' }}
+            <div class="sensor-card-header">
+              <ion-icon name="water-outline" class="sensor-icon humidity-icon"></ion-icon>
+              <span class="sensor-label">Humidity</span>
+            </div>
+            <div class="sensor-value humidity-value">{{ latestHumidity()!.value }}%</div>
+            <div class="sensor-delta" *ngIf="humidityDelta() !== null">
+              <ion-icon [name]="humidityDelta()! > 0 ? 'arrow-up' : (humidityDelta()! < 0 ? 'arrow-down' : 'remove')"></ion-icon>
+              {{ humidityDelta() }}% from previous reading
+            </div>
+            <div class="sensor-status" [class.warning]="humidityStatus() === 'WARNING'">
+              <span class="status-dot"></span>
+              {{ humidityStatus() }}
+            </div>
+            <div class="sparkline">
+              <canvas baseChart [data]="humiditySparkline()" [options]="sparklineOptions" type="line"></canvas>
+            </div>
+            <div class="sensor-time">Last updated: {{ latestHumidity()!.timestamp | date:'shortTime' }}</div>
           </ion-card-content>
         </ion-card>
       </ion-col>
@@ -47,16 +79,60 @@
     <ion-card-content>Loading current reading...</ion-card-content>
   </ion-card>
 
-  <!-- Historical readings -->
-  <ion-list>
-    <ion-item *ngFor="let reading of history()">
-      <ion-label>
-        <h3>
-          {{ reading.sensor_name === 'outdoor_temperature' ? 'Temperature' : 'Humidity' }}:
-          {{ reading.value }}{{ reading.sensor_name === 'outdoor_temperature' ? '°C' : '%' }}
-        </h3>
-        <p>{{ reading.timestamp | date:'medium' }}</p>
-      </ion-label>
-    </ion-item>
-  </ion-list>
+  <!-- Environment status -->
+  <ion-card class="env-status-card" *ngIf="overallStatus().label !== 'Loading…'">
+    <ion-card-content>
+      <div class="env-status-row">
+        <span class="status-dot" [style.background]="overallStatus().color"></span>
+        <span class="env-status-label">Environment Status</span>
+      </div>
+      <div class="env-status-main" [style.color]="overallStatus().color">{{ overallStatus().label }}</div>
+      <div class="env-status-detail">{{ overallStatus().detail }}</div>
+    </ion-card-content>
+  </ion-card>
+
+  <!-- Chart -->
+  <ion-card class="chart-card" *ngIf="chartData().labels?.length">
+    <ion-card-header>
+      <ion-card-title>Temperature & Humidity Trend</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <div class="chart-wrapper">
+        <canvas baseChart [data]="chartData()" [options]="chartOptions" type="line"></canvas>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+  <!-- Recent Readings -->
+  <ion-card class="readings-card">
+    <ion-card-header>
+      <ion-card-title>Recent Readings</ion-card-title>
+    </ion-card-header>
+    <ion-card-content class="readings-table-wrapper">
+      <table class="readings-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Temperature</th>
+            <th>Humidity</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of recentReadings()">
+            <td>
+              {{ row.timestamp | date:'shortTime' }}
+              <div class="row-date">{{ row.timestamp | date:'MMM d' }}</div>
+            </td>
+            <td class="temp-cell">{{ row.temperature }}°C</td>
+            <td class="humidity-cell">{{ row.humidity ?? '—' }}%</td>
+            <td>
+              <span class="status-dot normal"></span>
+              Normal
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </ion-card-content>
+  </ion-card>
 </ion-content>

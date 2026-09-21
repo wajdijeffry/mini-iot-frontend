@@ -25,4 +25,8 @@ export class SensorService {
   getSensorData(): Observable<SensorDataResponse> {
     return this.http.get<SensorDataResponse>(this.apiUrl);
   }
+
+  setLocation(latitude: number, longitude: number): Observable<any> {
+    return this.http.post(`${this.apiUrl}/location`, { latitude, longitude });
+  }
 }
